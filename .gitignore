@@ -1,0 +1,26 @@
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Generated vaults / qmd indexes should not be committed here
+SecondBrain/
+vault/
+.cache/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Secrets/configs
+.env
+*.env
+config.yaml
+credentials*
+*token*
+*secret*
+*password*
