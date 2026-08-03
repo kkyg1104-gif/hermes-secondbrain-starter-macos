@@ -1,7 +1,7 @@
 ---
 name: personal-secondbrain-llm-wiki
 description: Use when setting up a fresh personal Obsidian SecondBrain / LLM Wiki for one person's own agent, starting from zero content with ontology, templates, tag registry, qmd indexing, and structured “remember/record this” workflows.
-version: 1.1.0
+version: 1.1.1
 author: Hermes Agent
 license: MIT
 metadata:
@@ -295,7 +295,6 @@ Create these files with generic content only:
 - `10_Dashboard/Home.md`
 - `10_Dashboard/Projects Hub.md` with “No active projects yet.”
 - `10_Dashboard/Agendas Hub.md` with “No open agendas yet.”
-- `10_Dashboard/People Hub.md` with “No people recorded yet.”
 - `10_Dashboard/Decisions Hub.md` with “No decisions recorded yet.”
 - `10_Dashboard/Tags & Ontology Hub.md`
 - `00_Inbox/Inbox.md`

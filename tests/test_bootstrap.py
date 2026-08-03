@@ -48,6 +48,7 @@ case \"$command_name\" in
       same-path) printf 'Collection: %s\\n  Path:     %s\\n' \"$3\" \"$EXPECTED_VAULT\"; exit 0 ;;
       collision) printf 'Collection: %s\\n  Path:     /different/private/vault\\n' \"$3\"; exit 0 ;;
       show-error) echo 'database unavailable'; exit 2 ;;
+      unparseable) echo 'Collection exists but path is unavailable'; exit 0 ;;
       *) echo \"Collection not found: $3\"; exit 1 ;;
     esac ;;
   'collection add')
@@ -96,10 +97,60 @@ esac
         self.assertIn("FILES_EXISTING_SKIPPED=21", second.stdout)
         self.assertTrue((vault / "90_System/.personal-secondbrain-starter.json").is_file())
         marker = json.loads((vault / "90_System/.personal-secondbrain-starter.json").read_text())
-        self.assertEqual(marker["starter_version"], "1.1.0")
+        self.assertEqual(marker["starter_version"], "1.1.1")
         self.assertEqual(len(list(vault.rglob("People Hub.md"))), 1)
         home = (vault / "10_Dashboard/Home.md").read_text()
         self.assertIn("[[30_Knowledge/People/People Hub|People Hub]]", home)
+
+    def test_v1_1_0_marker_is_valid_and_upgraded(self) -> None:
+        vault = self.root / "marker-upgrade"
+        self.assertEqual(self.run_install(vault).returncode, 0)
+        marker_path = vault / "90_System/.personal-secondbrain-starter.json"
+        marker = json.loads(marker_path.read_text())
+        marker["starter_version"] = "1.1.0"
+        marker_path.write_text(json.dumps(marker))
+        result = self.run_install(vault)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads(marker_path.read_text())["starter_version"], "1.1.1")
+
+    def test_malformed_and_foreign_markers_fail_closed(self) -> None:
+        cases = {
+            "malformed": "{not-json",
+            "wrong-schema": json.dumps({"schema": "foreign", "starter_version": "1.0.0", "managed_files": ["00_Inbox/Inbox.md"]}),
+            "empty-managed": json.dumps({"schema": "personal-secondbrain-v1", "starter_version": "1.0.0", "managed_files": []}),
+            "unsafe-managed": json.dumps({"schema": "personal-secondbrain-v1", "starter_version": "1.0.0", "managed_files": ["../escape.md"]}),
+        }
+        for name, payload in cases.items():
+            with self.subTest(name=name):
+                vault = self.root / f"marker-{name}"
+                marker = vault / "90_System/.personal-secondbrain-starter.json"
+                marker.parent.mkdir(parents=True)
+                marker.write_text(payload)
+                result = self.run_install(vault, "--allow-nonempty", "--overwrite")
+                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertIn("Starter marker", result.stdout)
+                self.assertFalse((vault / "10_Dashboard/Home.md").exists())
+
+    def test_directory_marker_fails_closed(self) -> None:
+        vault = self.root / "directory-marker"
+        marker = vault / "90_System/.personal-secondbrain-starter.json"
+        marker.mkdir(parents=True)
+        result = self.run_install(vault, "--allow-nonempty", "--overwrite")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("regular file", result.stdout)
+        self.assertFalse((vault / "10_Dashboard/Home.md").exists())
+
+    def test_marker_symlink_fails_closed_without_touching_target(self) -> None:
+        vault = self.root / "marker-symlink"
+        outside = self.root / "outside-marker.json"
+        outside.write_text("SENTINEL\n")
+        marker = vault / "90_System/.personal-secondbrain-starter.json"
+        marker.parent.mkdir(parents=True)
+        marker.symlink_to(outside)
+        result = self.run_install(vault, "--allow-nonempty", "--overwrite")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("symbolic link", result.stdout)
+        self.assertEqual(outside.read_text(), "SENTINEL\n")
 
     def test_nonempty_unmarked_target_is_rejected_without_mutation(self) -> None:
         vault = self.root / "existing"
@@ -158,6 +209,41 @@ esac
         self.assertIn("symbolic link", result.stdout)
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_managed_file_symlink_is_rejected_without_touching_target(self) -> None:
+        vault = self.root / "file-symlink-vault"
+        outside = self.root / "outside-home.md"
+        outside.write_text("SENTINEL\n")
+        linked = vault / "10_Dashboard/Home.md"
+        linked.parent.mkdir(parents=True)
+        linked.symlink_to(outside)
+        result = self.run_install(vault, "--allow-nonempty", "--overwrite")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("symbolic link", result.stdout)
+        self.assertEqual(outside.read_text(), "SENTINEL\n")
+
+    def test_incompatible_managed_path_types_fail_before_write(self) -> None:
+        file_as_directory_vault = self.root / "managed-file-directory"
+        (file_as_directory_vault / "10_Dashboard/Home.md").mkdir(parents=True)
+        result = self.run_install(file_as_directory_vault, "--allow-nonempty", "--overwrite")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not a regular file", result.stdout)
+        self.assertFalse((file_as_directory_vault / "00_Inbox").exists())
+
+        parent_as_file_vault = self.root / "managed-parent-file"
+        parent_as_file_vault.mkdir()
+        (parent_as_file_vault / "90_System").write_text("BLOCKING FILE\n")
+        result = self.run_install(parent_as_file_vault, "--allow-nonempty", "--overwrite")
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not a directory", result.stdout)
+        self.assertFalse((parent_as_file_vault / "00_Inbox").exists())
+
+    def test_filesystem_root_and_home_are_rejected(self) -> None:
+        for target in (Path("/"), Path.home()):
+            with self.subTest(target=target):
+                result = self.run_install(target, "--check")
+                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertIn("Refusing", result.stdout)
+
     def test_qmd_new_collection_and_searches_succeed(self) -> None:
         vault = self.root / "qmd-success"
         env = self.make_fake_qmd("success", vault)
@@ -201,6 +287,22 @@ esac
         self.assertIn("QMD_SETUP_SUCCESS=false", result.stdout)
         self.assertIn("collection inspection failed", result.stdout)
         self.assertNotIn("collection add", Path(env["QMD_LOG"]).read_text())
+
+    def test_qmd_unparseable_collection_output_fails_closed(self) -> None:
+        vault = self.root / "qmd-unparseable"
+        env = self.make_fake_qmd("unparseable", vault)
+        result = self.run_install(vault, "--setup-qmd", env=env)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("path could not be parsed", result.stdout)
+        self.assertNotIn("collection add", Path(env["QMD_LOG"]).read_text())
+
+    def test_invalid_qmd_collection_name_is_rejected(self) -> None:
+        vault = self.root / "qmd-invalid-name"
+        env = self.make_fake_qmd("success", vault)
+        result = self.run_install(vault, "--setup-qmd", "--qmd-collection", "bad/name", env=env)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("invalid collection name", result.stdout)
+        self.assertFalse(Path(env["QMD_LOG"]).exists())
 
     def test_qmd_empty_verification_search_fails(self) -> None:
         vault = self.root / "qmd-search-empty"

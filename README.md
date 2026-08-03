@@ -1,6 +1,6 @@
 # Hermes Personal SecondBrain Starter
 
-Current release: **v1.1.0**
+Current release: **v1.1.1**
 
 A standalone Hermes skill for setting up a fresh personal Obsidian SecondBrain / LLM Wiki for one person and one agent.
 
@@ -45,6 +45,8 @@ bash install.sh --vault "$OBSIDIAN_VAULT_PATH"
 ```
 
 The installer rejects a non-empty directory that does not contain its starter marker. After reviewing the target, use `--allow-nonempty` only when you intentionally want to add the structure to an existing directory. `--overwrite` automatically backs up existing managed files before replacing them.
+
+An existing starter marker must be a regular JSON file with the expected schema, a non-empty version, and safe relative managed-file paths. Malformed, foreign, directory, or symbolic-link markers fail closed even when `--allow-nonempty` is supplied. Generated files and the marker are written atomically.
 
 To migrate a v1.0-generated vault, review the target and run with both `--allow-nonempty --overwrite`. The obsolete duplicate `10_Dashboard/People Hub.md` is backed up and removed; the canonical hub remains at `30_Knowledge/People/People Hub.md`.
 
@@ -111,7 +113,7 @@ Requirements:
 
 ## qmd setup notes
 
-qmd itself is **not bundled**. Install it separately, then let the bootstrap configure and verify a collection. The v1.1.0 bootstrap fails closed if an existing collection name points to a different path, and it verifies both `Agent Rules` and `Tag Registry` through collection-scoped searches before reporting success.
+qmd itself is **not bundled**. Install it separately, then let the bootstrap configure and verify a collection. The bootstrap fails closed if an existing collection name points to a different path, and it verifies both `Agent Rules` and `Tag Registry` through collection-scoped searches before reporting success.
 
 The bootstrap requires a qmd release that supports `qmd collection show <name>` (verified with qmd 2.1.0). If collection inspection is unavailable or fails for an ambiguous reason, setup stops instead of assuming the collection is missing.
 

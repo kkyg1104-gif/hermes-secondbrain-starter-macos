@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1
+
+- Validate starter marker type, JSON shape, schema, version, and managed paths before trusting it.
+- Reject malformed, foreign, directory, and symbolic-link markers even with `--allow-nonempty`.
+- Write generated files and the starter marker atomically with `os.replace()`.
+- Remove the stale duplicate Dashboard People Hub requirement from the manual bootstrap instructions.
+- Add regression coverage for marker, symlink, path-boundary, and qmd inspection edge cases.
+
 ## 1.1.0
 
 - Bundle the Python bootstrap during Hermes URL installs through an explicit support-file link.

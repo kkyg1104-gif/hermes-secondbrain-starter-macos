@@ -10,17 +10,27 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 SCHEMA = "personal-secondbrain-v1"
-STARTER_VERSION = "1.1.0"
+STARTER_VERSION = "1.1.1"
 MARKER_REL = Path("90_System/.personal-secondbrain-starter.json")
 COLLECTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 LEGACY_MANAGED_RELS = (Path("10_Dashboard/People Hub.md"),)
+ALLOWED_MANAGED_ROOTS = {
+    "00_Inbox",
+    "10_Dashboard",
+    "20_Life",
+    "30_Knowledge",
+    "40_Sources",
+    "50_Memory",
+    "90_System",
+}
 
 
 def frontmatter(type_: str, status: str, tags: list[str]) -> str:
@@ -42,11 +52,29 @@ updated: {today}
 """
 
 
-def write_if_missing(path: Path, content: str, overwrite: bool = False) -> str:
+def atomic_write_text(path: Path, content: str) -> None:
+    """Write a complete file by replacing the destination, never by following it."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S%f")
+    temp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{stamp}")
+    fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def write_if_missing(path: Path, content: str, overwrite: bool = False) -> str:
     if path.exists() and not overwrite:
         return "exists"
-    path.write_text(content, encoding="utf-8")
+    atomic_write_text(path, content)
     return "written"
 
 
@@ -143,24 +171,78 @@ def run_qmd_setup(vault: Path, collection: str) -> tuple[bool, list[str]]:
     return success, logs
 
 
+def validate_marker(vault: Path) -> tuple[str, str]:
+    """Return marker state: absent, valid, or invalid with a reason."""
+    marker_path = vault / MARKER_REL
+    if marker_path.is_symlink():
+        return "invalid", f"Starter marker must not be a symbolic link: {marker_path}"
+    if not marker_path.exists():
+        return "absent", "Starter marker is absent."
+    if not marker_path.is_file():
+        return "invalid", f"Starter marker must be a regular file: {marker_path}"
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return "invalid", f"Starter marker is unreadable or malformed: {exc}"
+    if not isinstance(marker, dict):
+        return "invalid", "Starter marker must contain a JSON object."
+    if marker.get("schema") != SCHEMA:
+        return "invalid", f"Starter marker schema must be {SCHEMA!r}."
+    version = marker.get("starter_version")
+    if not isinstance(version, str) or not version.strip():
+        return "invalid", "Starter marker starter_version must be a non-empty string."
+    managed = marker.get("managed_files")
+    if not isinstance(managed, list) or not managed or not all(isinstance(item, str) for item in managed):
+        return "invalid", "Starter marker managed_files must be a non-empty list of strings."
+    if len(set(managed)) != len(managed):
+        return "invalid", "Starter marker managed_files must not contain duplicates."
+    for raw in managed:
+        rel = PurePosixPath(raw)
+        if (
+            not raw
+            or "\\" in raw
+            or "\x00" in raw
+            or rel.is_absolute()
+            or not rel.parts
+            or ".." in rel.parts
+            or rel.parts[0] not in ALLOWED_MANAGED_ROOTS
+        ):
+            return "invalid", f"Starter marker contains an unsafe managed path: {raw!r}"
+    return "valid", "ok"
+
+
 def validate_vault_target(vault: Path, allow_nonempty: bool) -> tuple[bool, str]:
     if vault == Path(vault.anchor) or vault == Path.home().resolve():
         return False, "Refusing to use the filesystem root or home directory as a vault."
     if vault.exists() and not vault.is_dir():
         return False, "Vault path exists but is not a directory."
-    if vault.exists() and any(vault.iterdir()) and not (vault / MARKER_REL).exists() and not allow_nonempty:
-        return False, "Vault is not empty and has no starter marker. Use --allow-nonempty only after reviewing the target."
+    if vault.exists() and any(vault.iterdir()):
+        marker_state, marker_reason = validate_marker(vault)
+        if marker_state == "valid":
+            return True, "ok"
+        if marker_state == "absent" and allow_nonempty:
+            return True, "ok"
+        if marker_state == "absent":
+            return False, "Vault is not empty and has no starter marker. Use --allow-nonempty only after reviewing the target."
+        return False, marker_reason
     return True, "ok"
 
 
 def validate_managed_paths(vault: Path, rels: list[Path]) -> tuple[bool, str]:
-    """Refuse symlinks along managed paths so writes cannot escape the vault."""
+    """Refuse symlinks and incompatible path types before touching managed files."""
     for rel in rels:
         current = vault
-        for part in rel.parts:
+        for index, part in enumerate(rel.parts):
             current = current / part
             if current.is_symlink():
                 return False, f"Managed path contains a symbolic link: {current}"
+            if not current.exists():
+                continue
+            is_final = index == len(rel.parts) - 1
+            if is_final and not current.is_file():
+                return False, f"Managed file path is not a regular file: {current}"
+            if not is_final and not current.is_dir():
+                return False, f"Managed parent path is not a directory: {current}"
     return True, "ok"
 
 
@@ -460,8 +542,7 @@ Do not store passwords, authentication codes, tokens, cookies, API keys, OAuth/d
         "managed_files": sorted(files),
     }
     marker_path = vault / MARKER_REL
-    marker_path.parent.mkdir(parents=True, exist_ok=True)
-    marker_path.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(marker_path, json.dumps(marker, indent=2) + "\n")
     print(f"STARTER_MARKER={marker_path}")
     if args.setup_qmd:
         ok, qmd_logs = run_qmd_setup(vault, args.qmd_collection)
