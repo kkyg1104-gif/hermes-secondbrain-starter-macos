@@ -1,7 +1,7 @@
 ---
 name: personal-secondbrain-llm-wiki
 description: Use when setting up a fresh personal Obsidian SecondBrain / LLM Wiki for one person's own agent, starting from zero content with ontology, templates, tag registry, qmd indexing, and structured “remember/record this” workflows.
-version: 1.0.0
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -117,7 +117,6 @@ SecondBrain/
 │  ├─ Home.md
 │  ├─ Projects Hub.md
 │  ├─ Agendas Hub.md
-│  ├─ People Hub.md
 │  ├─ Decisions Hub.md
 │  └─ Tags & Ontology Hub.md
 ├─ 20_Life/
@@ -363,17 +362,18 @@ Recommended status values:
 
 ## One-Shot Setup Recipe
 
-Use the linked bootstrap script when available:
+Use the bundled [bootstrap script](scripts/bootstrap_personal_secondbrain.py) when available. The explicit link ensures Hermes URL installs fetch and security-scan the script together with this skill.
 
 ```bash
-python scripts/bootstrap_personal_secondbrain.py "$OBSIDIAN_VAULT_PATH"
+python3 scripts/bootstrap_personal_secondbrain.py "$OBSIDIAN_VAULT_PATH" --check
+python3 scripts/bootstrap_personal_secondbrain.py "$OBSIDIAN_VAULT_PATH"
 ```
 
 If the skill was installed without linked files, create the same folder/files manually from the sections above.
 
 1. Install Obsidian if it is not installed.
 2. Create an empty vault at the chosen path, e.g. `~/Documents/SecondBrain`.
-3. Run `scripts/bootstrap_personal_secondbrain.py` against the vault, or manually create the folder skeleton and generic hub/system/template files.
+3. Run the bootstrap script with `--check`, review the plan, then run it against the vault. A non-empty unmarked target is rejected unless the user explicitly approves `--allow-nonempty`.
 4. Set the agent environment/config with the vault path, e.g. `OBSIDIAN_VAULT_PATH`.
 5. Configure qmd to index only that vault.
 6. Run qmd update/embed.
@@ -411,6 +411,8 @@ Expected behavior:
 6. **Forgetting qmd after edits.** A note that exists but is not indexed will feel missing to the agent.
 7. **Claiming qmd success without verification.** If qmd fails, say so and keep the note path.
 8. **Storing secrets.** Refuse or summarize safely when the content contains credentials or security material.
+9. **Ignoring qmd collection-name collisions.** Verify that an existing collection resolves to the exact requested vault path; fail closed when it points elsewhere.
+10. **Overwriting customized system files without recovery.** The bootstrap backs up managed files before `--overwrite`; report the backup path.
 
 ## Verification Checklist
 

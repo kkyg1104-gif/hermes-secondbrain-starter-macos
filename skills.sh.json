@@ -1,0 +1,9 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "categories": [
+    {
+      "title": "Personal Knowledge",
+      "skills": ["personal-secondbrain-llm-wiki"]
+    }
+  ]
+}

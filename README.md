@@ -1,5 +1,7 @@
 # Hermes Personal SecondBrain Starter
 
+Current release: **v1.1.0**
+
 A standalone Hermes skill for setting up a fresh personal Obsidian SecondBrain / LLM Wiki for one person and one agent.
 
 This starter creates **structure, ontology, templates, Agent Rules, Tag Registry, and qmd setup guidance** only. It does **not** import another person's projects, people, decisions, memories, chats, configs, or private notes.
@@ -35,9 +37,16 @@ cd hermes-secondbrain-starter-macos
 # Choose a vault path.
 export OBSIDIAN_VAULT_PATH="$HOME/Documents/SecondBrain"
 
-# Create the empty vault skeleton only.
+# Validate first without writing anything.
+bash install.sh --vault "$OBSIDIAN_VAULT_PATH" --check
+
+# Create the empty vault skeleton.
 bash install.sh --vault "$OBSIDIAN_VAULT_PATH"
 ```
+
+The installer rejects a non-empty directory that does not contain its starter marker. After reviewing the target, use `--allow-nonempty` only when you intentionally want to add the structure to an existing directory. `--overwrite` automatically backs up existing managed files before replacing them.
+
+To migrate a v1.0-generated vault, review the target and run with both `--allow-nonempty --overwrite`. The obsolete duplicate `10_Dashboard/People Hub.md` is backed up and removed; the canonical hub remains at `30_Knowledge/People/People Hub.md`.
 
 If qmd is already installed and you want this installer to configure the qmd collection:
 
@@ -54,7 +63,17 @@ bash install.sh --vault "$OBSIDIAN_VAULT_PATH" --setup-qmd --qmd-collection my-s
 
 ## Install the skill into Hermes
 
-Copy or symlink `SKILL.md` into the target Hermes skill directory, or have the agent load it from this repository URL if your Hermes setup supports URL-based skill installation.
+For a multi-file install that works with Hermes versions whose bare-URL adapter only fetches one file, use the GitHub skill-directory identifier:
+
+```bash
+SKILL_ID="kkyg1104-gif/hermes-secondbrain-starter-macos/skills/personal-secondbrain-llm-wiki"
+hermes skills inspect "$SKILL_ID"
+hermes skills install "$SKILL_ID"
+```
+
+This directory bundle includes and security-scans both `SKILL.md` and `scripts/bootstrap_personal_secondbrain.py`. Newer Hermes releases may also follow explicit support-file links from a raw `SKILL.md` URL, but the GitHub directory identifier is the compatibility-first route.
+
+Manual installation remains available:
 
 Recommended local install pattern:
 
@@ -66,6 +85,8 @@ cp scripts/bootstrap_personal_secondbrain.py "$HOME/.hermes/skills/note-taking/p
 ```
 
 Then restart Hermes or start a new session so the skill list refreshes.
+
+The shell `export OBSIDIAN_VAULT_PATH=...` is temporary. If Hermes runs through a gateway or another long-lived process, configure the vault path in that process's environment and start a new Hermes session after installing the skill.
 
 ## Agent instruction after install
 
@@ -89,6 +110,10 @@ Requirements:
 ```
 
 ## qmd setup notes
+
+qmd itself is **not bundled**. Install it separately, then let the bootstrap configure and verify a collection. The v1.1.0 bootstrap fails closed if an existing collection name points to a different path, and it verifies both `Agent Rules` and `Tag Registry` through collection-scoped searches before reporting success.
+
+The bootstrap requires a qmd release that supports `qmd collection show <name>` (verified with qmd 2.1.0). If collection inspection is unavailable or fails for an ambiguous reason, setup stops instead of assuming the collection is missing.
 
 Check qmd first:
 
@@ -121,11 +146,19 @@ qmd search "Tag Registry" --collection my-secondbrain
 
 ```text
 .
+├─ CHANGELOG.md
 ├─ README.md
 ├─ SKILL.md
 ├─ install.sh
-└─ scripts/
-   └─ bootstrap_personal_secondbrain.py
+├─ scripts/
+│  └─ bootstrap_personal_secondbrain.py
+├─ skills/
+│  └─ personal-secondbrain-llm-wiki/
+│     ├─ SKILL.md
+│     └─ scripts/
+│        └─ bootstrap_personal_secondbrain.py
+└─ tests/
+   └─ test_bootstrap.py
 ```
 
 ## Privacy boundary

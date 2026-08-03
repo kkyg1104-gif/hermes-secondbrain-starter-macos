@@ -9,11 +9,18 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 SCHEMA = "personal-secondbrain-v1"
+STARTER_VERSION = "1.1.0"
+MARKER_REL = Path("90_System/.personal-secondbrain-starter.json")
+COLLECTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+LEGACY_MANAGED_RELS = (Path("10_Dashboard/People Hub.md"),)
 
 
 def frontmatter(type_: str, status: str, tags: list[str]) -> str:
@@ -50,8 +57,34 @@ def template_body(type_: str, status: str, tags: list[str], title: str, sections
     return "\n".join(body).rstrip() + "\n"
 
 
+def run_qmd_command(cmd: list[str], logs: list[str]) -> subprocess.CompletedProcess[str]:
+    proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    logs.append(f"$ {' '.join(cmd)}")
+    output = (proc.stdout or "").strip()
+    if output:
+        logs.append(output)
+    logs.append(f"exit={proc.returncode}")
+    return proc
+
+
+def qmd_collection_path(qmd: str, collection: str, logs: list[str]) -> tuple[Optional[Path], bool]:
+    """Return an existing collection path and whether the result was parseable."""
+    proc = run_qmd_command([qmd, "collection", "show", collection], logs)
+    if proc.returncode != 0:
+        output = (proc.stdout or "").lower()
+        if "collection not found" in output:
+            return None, True
+        logs.append("QMD_ERROR: collection inspection failed; refusing to treat it as missing.")
+        return None, False
+    match = re.search(r"^\s*Path:\s*(.+?)\s*$", proc.stdout or "", flags=re.MULTILINE)
+    if not match:
+        logs.append("QMD_ERROR: collection exists but its path could not be parsed.")
+        return None, False
+    return Path(match.group(1)).expanduser().resolve(), True
+
+
 def run_qmd_setup(vault: Path, collection: str) -> tuple[bool, list[str]]:
-    """Best-effort qmd setup. Returns (success, log_lines)."""
+    """Configure and verify qmd without accepting ambiguous collection failures."""
     logs: list[str] = []
     qmd = shutil.which("qmd")
     if not qmd:
@@ -63,28 +96,86 @@ def run_qmd_setup(vault: Path, collection: str) -> tuple[bool, list[str]]:
             f"  qmd context add qmd://{collection} 'My personal Obsidian SecondBrain / LLM Wiki.'",
             "  qmd update && qmd embed",
         ]
+    if not COLLECTION_RE.fullmatch(collection):
+        return False, [
+            "QMD_ERROR: invalid collection name.",
+            "Use 1-64 letters, numbers, dots, underscores, or hyphens; start with a letter or number.",
+        ]
+
+    existing_path, parsed = qmd_collection_path(qmd, collection, logs)
+    if not parsed:
+        return False, logs
+    if existing_path is None:
+        proc = run_qmd_command(
+            [qmd, "collection", "add", str(vault), "--name", collection], logs
+        )
+        if proc.returncode != 0:
+            logs.append("QMD_ERROR: collection registration failed.")
+            return False, logs
+    elif existing_path != vault:
+        logs.append(
+            f"QMD_ERROR: collection '{collection}' points to {existing_path}, not {vault}."
+        )
+        return False, logs
+    else:
+        logs.append(f"QMD_COLLECTION_PATH_VERIFIED={vault}")
 
     commands = [
-        [qmd, "collection", "add", str(vault), "--name", collection],
         [qmd, "context", "add", f"qmd://{collection}", "My personal Obsidian SecondBrain / LLM Wiki. It starts empty and grows from my own explicit records, sources, and decisions."],
         [qmd, "update"],
         [qmd, "embed"],
         [qmd, "status"],
         [qmd, "collection", "list"],
+        [qmd, "search", "My SecondBrain Agent Rules", "--collection", collection, "--files"],
+        [qmd, "search", "Tag Registry", "--collection", collection, "--files"],
     ]
 
     success = True
     for cmd in commands:
-        proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        logs.append(f"$ {' '.join(cmd)}")
-        output = (proc.stdout or "").strip()
-        if output:
-            logs.append(output)
-        logs.append(f"exit={proc.returncode}")
-        # collection/context may already exist; keep going but mark hard failures.
-        if proc.returncode != 0 and cmd[1:3] not in (["collection", "add"], ["context", "add"]):
+        proc = run_qmd_command(cmd, logs)
+        if proc.returncode != 0:
             success = False
+        if cmd[1] == "search":
+            output = (proc.stdout or "").strip()
+            if not output or "no results" in output.lower():
+                logs.append(f"QMD_ERROR: verification search failed for: {cmd[2]}")
+                success = False
     return success, logs
+
+
+def validate_vault_target(vault: Path, allow_nonempty: bool) -> tuple[bool, str]:
+    if vault == Path(vault.anchor) or vault == Path.home().resolve():
+        return False, "Refusing to use the filesystem root or home directory as a vault."
+    if vault.exists() and not vault.is_dir():
+        return False, "Vault path exists but is not a directory."
+    if vault.exists() and any(vault.iterdir()) and not (vault / MARKER_REL).exists() and not allow_nonempty:
+        return False, "Vault is not empty and has no starter marker. Use --allow-nonempty only after reviewing the target."
+    return True, "ok"
+
+
+def validate_managed_paths(vault: Path, rels: list[Path]) -> tuple[bool, str]:
+    """Refuse symlinks along managed paths so writes cannot escape the vault."""
+    for rel in rels:
+        current = vault
+        for part in rel.parts:
+            current = current / part
+            if current.is_symlink():
+                return False, f"Managed path contains a symbolic link: {current}"
+    return True, "ok"
+
+
+def backup_managed_files(vault: Path, files: dict[str, str]) -> Optional[Path]:
+    rels = [Path(rel) for rel in files] + list(LEGACY_MANAGED_RELS)
+    existing = [rel for rel in rels if (vault / rel).is_file()]
+    if not existing:
+        return None
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S%f")
+    backup_root = vault.parent / ".secondbrain-starter-backups" / stamp
+    for rel in existing:
+        destination = backup_root / rel
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(vault / rel, destination)
+    return backup_root
 
 
 def main() -> int:
@@ -92,12 +183,19 @@ def main() -> int:
     parser.add_argument("vault", help="Path to the Obsidian vault to create/update")
     parser.add_argument("--year", type=int, default=dt.date.today().year, help="Year folder for logs/decisions")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing bootstrap files")
+    parser.add_argument("--allow-nonempty", action="store_true", help="Allow first-time setup in a non-empty directory after review")
+    parser.add_argument("--check", action="store_true", help="Validate the target and print the plan without writing files or configuring qmd")
     parser.add_argument("--setup-qmd", action="store_true", help="Best-effort qmd collection/context/update/embed setup for this vault")
     parser.add_argument("--qmd-collection", default="my-secondbrain", help="qmd collection name to use with --setup-qmd")
     args = parser.parse_args()
 
     vault = Path(args.vault).expanduser().resolve()
     year = str(args.year)
+
+    safe, reason = validate_vault_target(vault, args.allow_nonempty)
+    if not safe:
+        print(f"ERROR: {reason}")
+        return 2
 
     dirs = [
         "00_Inbox",
@@ -117,9 +215,6 @@ def main() -> int:
         "90_System/Templates",
         "90_System/Ontology",
     ]
-    for d in dirs:
-        (vault / d).mkdir(parents=True, exist_ok=True)
-
     files: dict[str, str] = {}
 
     files["00_Inbox/Inbox.md"] = template_body(
@@ -147,7 +242,7 @@ The agent should organize durable information into projects, agendas, decisions,
 
 - [[Projects Hub]]
 - [[Agendas Hub]]
-- [[People Hub]]
+- [[30_Knowledge/People/People Hub|People Hub]]
 - [[Decisions Hub]]
 - [[Tags & Ontology Hub]]
 
@@ -186,10 +281,6 @@ No waiting agendas yet.
 No resolved agendas yet.
 """
 
-    files["10_Dashboard/People Hub.md"] = frontmatter("hub", "active", ["system", "dashboard", "person"]) + """# People Hub
-
-No people recorded yet.
-"""
 
     files["10_Dashboard/Decisions Hub.md"] = frontmatter("hub", "active", ["system", "dashboard", "decision"]) + """# Decisions Hub
 
@@ -317,6 +408,36 @@ Do not store passwords, authentication codes, tokens, cookies, API keys, OAuth/d
         type_, status, tags, title, sections = spec
         files[f"90_System/Templates/{filename}"] = template_body(type_, status, tags, title, sections)
 
+    print(f"STARTER_VERSION={STARTER_VERSION}")
+    print(f"VAULT={vault}")
+    print(f"PLANNED_DIRS={len(dirs)}")
+    print(f"PLANNED_FILES={len(files)}")
+    print(f"TARGET_MARKER_PRESENT={str((vault / MARKER_REL).exists()).lower()}")
+    paths_safe, paths_reason = validate_managed_paths(
+        vault, [Path(rel) for rel in files] + list(LEGACY_MANAGED_RELS) + [MARKER_REL]
+    )
+    if not paths_safe:
+        print(f"ERROR: {paths_reason}")
+        return 2
+    if args.check:
+        print("CHECK_ONLY=true")
+        print("CHECK_RESULT=ok")
+        return 0
+
+    if args.overwrite:
+        backup_root = backup_managed_files(vault, files)
+        print(f"BACKUP_DIR={backup_root if backup_root else 'not-needed'}")
+        legacy_removed = 0
+        for rel in LEGACY_MANAGED_RELS:
+            legacy_path = vault / rel
+            if legacy_path.is_file():
+                legacy_path.unlink()
+                legacy_removed += 1
+        print(f"LEGACY_FILES_REMOVED={legacy_removed}")
+
+    for d in dirs:
+        (vault / d).mkdir(parents=True, exist_ok=True)
+
     written = 0
     existing = 0
     for rel, content in files.items():
@@ -326,14 +447,22 @@ Do not store passwords, authentication codes, tokens, cookies, API keys, OAuth/d
         else:
             existing += 1
 
-    print(f"VAULT={vault}")
     print(f"DIRS_CREATED_OR_PRESENT={len(dirs)}")
     print(f"FILES_WRITTEN={written}")
     print(f"FILES_EXISTING_SKIPPED={existing}")
     print("REAL_PROJECTS_CREATED=0")
     print("REAL_AGENDAS_CREATED=0")
     print("REAL_PEOPLE_CREATED=0")
-    print(f"REAL_DECISIONS_CREATED=0")
+    print("REAL_DECISIONS_CREATED=0")
+    marker = {
+        "schema": SCHEMA,
+        "starter_version": STARTER_VERSION,
+        "managed_files": sorted(files),
+    }
+    marker_path = vault / MARKER_REL
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
+    print(f"STARTER_MARKER={marker_path}")
     if args.setup_qmd:
         ok, qmd_logs = run_qmd_setup(vault, args.qmd_collection)
         print(f"QMD_COLLECTION={args.qmd_collection}")
@@ -342,6 +471,8 @@ Do not store passwords, authentication codes, tokens, cookies, API keys, OAuth/d
         for line in qmd_logs:
             print(line)
         print("QMD_LOG_END")
+        if not ok:
+            return 1
     else:
         print("QMD_SETUP_SKIPPED=true")
         print(f"NEXT: configure qmd for this vault only, then run: qmd collection add {vault} --name my-secondbrain && qmd update && qmd embed")

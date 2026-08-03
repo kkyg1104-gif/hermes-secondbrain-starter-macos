@@ -4,7 +4,8 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  bash install.sh --vault PATH [--setup-qmd] [--qmd-collection NAME] [--year YYYY] [--overwrite]
+  bash install.sh --vault PATH [--check] [--allow-nonempty] [--setup-qmd]
+                  [--qmd-collection NAME] [--year YYYY] [--overwrite]
 
 Examples:
   bash install.sh --vault "$HOME/Documents/SecondBrain"
@@ -20,6 +21,8 @@ YEAR="$(date +%Y)"
 SETUP_QMD=0
 QMD_COLLECTION="my-secondbrain"
 OVERWRITE=0
+ALLOW_NONEMPTY=0
+CHECK_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +44,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --overwrite)
       OVERWRITE=1
+      shift
+      ;;
+    --allow-nonempty)
+      ALLOW_NONEMPTY=1
+      shift
+      ;;
+    --check)
+      CHECK_ONLY=1
       shift
       ;;
     -h|--help)
@@ -79,11 +90,21 @@ ARGS=("$BOOTSTRAP" "$VAULT" --year "$YEAR")
 if [[ "$OVERWRITE" -eq 1 ]]; then
   ARGS+=(--overwrite)
 fi
+if [[ "$ALLOW_NONEMPTY" -eq 1 ]]; then
+  ARGS+=(--allow-nonempty)
+fi
+if [[ "$CHECK_ONLY" -eq 1 ]]; then
+  ARGS+=(--check)
+fi
 if [[ "$SETUP_QMD" -eq 1 ]]; then
   ARGS+=(--setup-qmd --qmd-collection "$QMD_COLLECTION")
 fi
 
 "$PYTHON_BIN" "${ARGS[@]}"
+
+if [[ "$CHECK_ONLY" -eq 1 ]]; then
+  exit 0
+fi
 
 cat <<NEXT
 
