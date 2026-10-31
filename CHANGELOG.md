@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Make the existing package setup/reference-only and require a distinct target-agent operating-skill handoff.
+- Leave handoff pending in generated Agent Rules; distinguish vault creation from skill activation and functional validation.
+- Preserve the legacy install identifier for compatibility.
+
 ## 1.1.1
 
 - Validate starter marker type, JSON shape, schema, version, and managed paths before trusting it.

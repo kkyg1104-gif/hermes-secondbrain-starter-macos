@@ -108,7 +108,7 @@ fi
 
 cat <<NEXT
 
-DONE.
+VAULT SKELETON CREATED. Operating-skill handoff still requires the agent.
 
 Next recommended checks:
   1. Open the vault in Obsidian: $VAULT

@@ -71,6 +71,20 @@ esac
             "QMD_LOG": str(self.root / f"qmd-{scenario}.log"),
         }
 
+    def test_setup_only_operating_skill_handoff(self) -> None:
+        skill = (REPO / "SKILL.md").read_text()
+        self.assertIn("NOT the ongoing SecondBrain operating skill", skill)
+        self.assertIn("do not reuse that identifier", skill)
+        self.assertIn("pending until checked", skill)
+        vault = self.root / "handoff-vault"
+        result = self.run_install(vault)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("Operating-skill handoff still requires the agent", result.stdout)
+        rules = (vault / "90_System/Agent Rules.md").read_text()
+        self.assertIn("Operating skill: pending agent handoff.", rules)
+        self.assertIn("does not create or register that skill", rules)
+        self.assertIn("related questions search existing knowledge first", rules)
+
     def test_check_only_does_not_create_vault(self) -> None:
         vault = self.root / "check-vault"
         result = self.run_install(vault, "--check")

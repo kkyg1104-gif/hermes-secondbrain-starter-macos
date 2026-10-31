@@ -8,6 +8,12 @@ This starter creates **structure, ontology, templates, Agent Rules, Tag Registry
 
 The generated instructions use first-person ownership language: **my SecondBrain**, **my vault**, **my LLM Wiki**.
 
+## Setup skill, not a daily operating skill
+
+The legacy install identifier `personal-secondbrain-llm-wiki` remains compatible, but this package is **initial setup/reference only**. The target agent must create or adapt its own distinctly named operating skill (for example `secondbrain-operations`) for daily recording, retrieval, updating, correction, and linking. Do not reuse the starter package identifier for that skill.
+
+The installer creates vault structure and Agent Rules; **it does not automatically generate/register an agent skill**. Agent Rules explicitly leave the operating-skill handoff pending until the agent creates/adapts, activates, and tests its own skill. A suitable existing operating skill should be adapted rather than duplicated. No automatic capture or cron jobs are enabled by default.
+
 ## What this gives you
 
 - Empty Obsidian vault skeleton
@@ -95,7 +101,7 @@ The shell `export OBSIDIAN_VAULT_PATH=...` is temporary. If Hermes runs through 
 Tell the target agent:
 
 ```text
-Use the personal-secondbrain-llm-wiki skill to set up my personal SecondBrain.
+Use personal-secondbrain-llm-wiki only as the initial setup/reference. Set up my SecondBrain, then create or adapt a distinctly named operating skill for my own agent and verify the handoff. Do not keep using the starter package as my daily skill.
 
 My vault path is:
 <absolute Obsidian vault path>

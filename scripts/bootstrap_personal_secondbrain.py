@@ -397,6 +397,14 @@ When I say “remember this,” “record this,” “save this,” “기억해
 
 Do not dump entire chats. Extract durable facts and organize them into projects, agendas, decisions, people, sources, logs, or concepts.
 
+## Operating skill handoff
+
+The `personal-secondbrain-llm-wiki` package is initial setup/reference only, not my daily operating skill. My agent must create or adapt a distinct environment-specific operating skill (for example `secondbrain-operations`) and record its actual name/path here after validation. The bootstrap does not create or register that skill.
+
+Operating skill: pending agent handoff.
+
+Routine recording, retrieval, updates, corrections, linking, and index verification use my own operating skill. It reads these rules and local settings; related questions search existing knowledge first. Do not enable automatic capture or scheduled work without my separate approval. Do not mark handoff complete until actual skill discovery and create/search/update/correction tests pass.
+
 ## Recording workflow
 
 1. Extract the durable fact, preference, decision, person, source, or next action.

@@ -1,6 +1,6 @@
 ---
 name: personal-secondbrain-llm-wiki
-description: Use when setting up a fresh personal Obsidian SecondBrain / LLM Wiki for one person's own agent, starting from zero content with ontology, templates, tag registry, qmd indexing, and structured “remember/record this” workflows.
+description: "Use when initially setting up a personal SecondBrain. Setup/reference only: build the vault and create or adapt a distinctly named, environment-specific operating skill; do not use this package as the daily recording skill."
 version: 1.1.1
 author: Hermes Agent
 license: MIT
@@ -11,6 +11,21 @@ metadata:
 ---
 
 # Personal SecondBrain LLM Wiki
+
+## Setup-only scope and mandatory operating-skill handoff
+
+This is an initial setup/reference skill, NOT the ongoing SecondBrain operating skill. Its legacy package identifier `personal-secondbrain-llm-wiki` is kept for installation compatibility only; do not reuse that identifier as the target agent's operational skill name.
+
+Setup is complete only when the target agent has created or adapted its own persistent operating skill and verified that handoff. The bootstrap script creates vault files only; it does not create or register an agent skill automatically.
+
+1. Inspect the target agent's existing vault, skills, tools, and skill-discovery mechanism. Reuse a suitable existing operating skill rather than creating a duplicate. Preserve customized files and require approval before destructive changes.
+2. Create or adapt an operating skill using the target runtime's supported mechanism. Choose a distinct local name such as `secondbrain-operations`; do not name it `personal-secondbrain-llm-wiki` or use `starter`, `bootstrap`, or `setup` in its name. Its description must trigger on routine recording, retrieval, updates, corrections, and linked knowledge management, not just initial setup.
+3. Adapt the recording, retrieval, correction, linking, deduplication, tag, privacy, and indexing principles below to the target's actual tools. These sections are reference material for authoring the operating skill, not instructions to keep selecting this setup skill for daily use. Do not copy private records, machine paths, or unsupported tool assumptions.
+4. Keep confirmed local vault paths, search collection, tool availability, and operating-skill identifier in a local configuration/reference. Make the operating skill load `90_System/Agent Rules.md` and the local settings. Never point it at another user's vault.
+5. On explicit save requests, search before writing and update canonical notes. On related questions and follow-up work, retrieve existing knowledge first. Refresh and verify the configured index after meaningful changes; report missing tools or indexing failures separately from successful writes.
+6. Validate the generated/adapted skill's frontmatter, location, discovery, and support files using the target runtime. Test neutral create/search/update/correct/re-search requests through that operating skill, not merely by running the bootstrap. Report file-level checks separately from real agent invocation; if a fresh session is needed, mark activation pending until checked.
+7. Record the final operating skill name/path in the local Agent Rules. Confirm routine requests route to it instead of this setup skill. Keep this starter for explicit setup/repair/reference only; do not delete or disable installed skills without approval.
+8. Do not enable automatic conversation capture, recurring reviews, synchronization, or external actions without separate approval. Report vault creation, search readiness, operating-skill creation, activation, and functional testing as separate states. Never call setup fully complete if the operating-skill handoff is pending.
 
 ## Overview
 
@@ -26,7 +41,7 @@ Load this skill when the user asks to:
 
 - set up Obsidian as a personal SecondBrain for a new/family/personal agent;
 - create an LLM Wiki from scratch with project/agenda/decision/person/source/log/concept structure;
-- make “기억해 / 기록해 / 저장해 / remember this / record this” requests write structured notes;
+- configure a separate operating skill to handle “기억해 / 기록해 / 저장해 / remember this / record this” requests;
 - prevent importing another user's SecondBrain contents while reusing only the operating model;
 - configure qmd indexing so every meaningful note write/update is searchable;
 - define tag hygiene, ontology, duplicate-prevention, and correction/update rules.
@@ -380,6 +395,7 @@ If the skill was installed without linked files, create the same folder/files ma
 8. Test with 3 safe fake statements that do not contain real private data.
 9. Verify each test creates/updates the correct note type and qmd can find the content.
 10. Remove fake test notes if the vault must remain pristine after validation.
+11. Complete the mandatory operating-skill handoff above; vault creation alone is not full setup completion.
 
 ## Verification Tests
 
